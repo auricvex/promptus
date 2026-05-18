@@ -1,0 +1,23 @@
+[package]
+name = "promptus-catena"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Composable orchestration layer for Promptus — chains, memory, and tool-calling agents"
+
+[lints]
+workspace = true
+
+[dependencies]
+promptus-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures.workspace = true
+tokio = { version = "1", features = ["rt", "macros", "sync"] }
+tracing = "0.1"
+minijinja = "2"
+
+[dev-dependencies]
+promptus-openai.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
