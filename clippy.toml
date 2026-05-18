@@ -1,0 +1,18 @@
+avoid-breaking-exported-api = false
+check-inconsistent-struct-field-initializers = true
+lint-commented-code = true
+
+# Storage engine complexity thresholds
+cognitive-complexity-threshold = 30
+type-complexity-threshold = 350
+too-many-lines-threshold = 150
+too-many-arguments-threshold = 10
+trivial-copy-size-limit = 8
+
+# Allowed wildcard imports (from specific crates)
+allowed-wildcard-imports = []
+
+# Disallow dangerous methods in storage engine code
+[[disallowed-methods]]
+path = "std::panic::panic_any"
+reason = "use a typed error instead of panicking with an arbitrary value"
