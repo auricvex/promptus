@@ -177,3 +177,363 @@ pub struct ToolCall {
     /// `Value::String` if the model produced invalid JSON.
     pub arguments: serde_json::Value,
 }
+
+// ---------------------------------------------------------------------------
+// Reasoning
+// ---------------------------------------------------------------------------
+
+/// Constrains the effort a reasoning model spends on internal reasoning.
+///
+/// Not all providers or models support every level — consult the target
+/// provider's documentation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReasoningEffort {
+    /// No reasoning (supported only by some newer models).
+    None,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    /// Extended reasoning beyond `High` (provider-specific).
+    XHigh,
+}
+
+// ---------------------------------------------------------------------------
+// Response format
+// ---------------------------------------------------------------------------
+
+/// Constrains the model's output format.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResponseFormat {
+    /// Plain text output (the default).
+    Text,
+    /// Force the model to produce valid JSON (no schema enforcement).
+    JsonObject,
+    /// Force the model to produce JSON conforming to a specific schema.
+    JsonSchema {
+        /// A name for the schema (used by the provider for caching/logging).
+        name: String,
+        /// The JSON Schema the output must conform to.
+        schema: serde_json::Value,
+        /// Whether to enforce strict schema adherence.
+        strict: bool,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// ChatRequest
+// ---------------------------------------------------------------------------
+
+/// A provider-agnostic chat completion request.
+///
+/// This is the input to [`ChatProvider::chat`](crate::ChatProvider::chat) and
+/// [`ChatProvider::chat_stream`](crate::ChatProvider::chat_stream). It
+/// captures everything a provider needs to generate a response — the model,
+/// conversation history, tool definitions, and sampling parameters.
+#[derive(Debug, Clone)]
+pub struct ChatRequest {
+    /// The model identifier (e.g. `"gpt-4o"`, `"llama-3.3-70b-versatile"`).
+    pub model: String,
+    /// The conversation history.
+    pub messages: Vec<Message>,
+    /// Tools the model may call. Use [`ToolSpec::Function`] for standard
+    /// function tools, or [`ToolSpec::Raw`] for provider-specific tool types
+    /// (e.g. web search).
+    pub tools: Option<Vec<ToolSpec>>,
+    /// Controls which tool the model is allowed/forced to call.
+    pub tool_choice: Option<ToolChoice>,
+    /// Constrains reasoning effort for reasoning models.
+    pub reasoning_effort: Option<ReasoningEffort>,
+    /// Sampling temperature (0.0–2.0). Higher values produce more random
+    /// output.
+    pub temperature: Option<f32>,
+    /// Nucleus sampling threshold (0.0–1.0).
+    pub top_p: Option<f32>,
+    /// Maximum number of tokens to generate (including reasoning tokens for
+    /// some providers).
+    pub max_tokens: Option<u32>,
+    /// Stop sequences — the model will stop generating when any of these
+    /// strings appear in the output.
+    pub stop: Option<Vec<String>>,
+    /// Constrains the output format (text, JSON, or JSON with a schema).
+    pub response_format: Option<ResponseFormat>,
+    /// Whether to stream the response via server-sent events.
+    pub stream: bool,
+    /// Extra provider-specific fields merged verbatim into the request body.
+    ///
+    /// The value must be a JSON object (or `None`). Its keys are flattened
+    /// into the top-level request, so you can pass vendor extensions like
+    /// Groq's `compound_custom` without the core types knowing about them.
+    ///
+    /// ```ignore
+    /// use serde_json::json;
+    ///
+    /// let extra = json!({
+    ///     "compound_custom": {
+    ///         "tools": {
+    ///             "enabled_tools": ["web_search", "code_interpreter"]
+    ///         }
+    ///     }
+    /// });
+    /// ```
+    pub extra: Option<serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
+// ChatResponse
+// ---------------------------------------------------------------------------
+
+/// A provider-agnostic chat completion response.
+///
+/// Returned by [`ChatProvider::chat`](crate::ChatProvider::chat). Contains
+/// the model's text output (if any), any tool calls it requested, and
+/// optional usage/token accounting.
+#[derive(Debug, Clone)]
+pub struct ChatResponse {
+    /// The model's text output, if the model produced text rather than tool
+    /// calls.
+    pub content: Option<String>,
+    /// Internal reasoning text, exposed by some reasoning models (e.g.
+    /// DeepSeek-R1). Vendor-specific — not all providers populate this.
+    pub reasoning_content: Option<String>,
+    /// Tool calls the model requested. Empty if the model produced text.
+    pub tool_calls: Vec<ToolCall>,
+    /// Why the model stopped generating.
+    pub finish_reason: FinishReason,
+    /// Token usage statistics, if the provider reports them.
+    pub usage: Option<Usage>,
+    /// The model that actually generated the response (may differ from the
+    /// requested model if the provider substituted a fallback).
+    pub model: String,
+}
+
+/// Why the model stopped generating tokens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FinishReason {
+    /// The model hit a natural stop point or a configured stop sequence.
+    Stop,
+    /// The model hit the `max_tokens` limit.
+    Length,
+    /// The model requested one or more tool calls.
+    ToolCalls,
+    /// Content was omitted due to a content filter.
+    ContentFilter,
+    /// A provider-specific reason not covered by the other variants.
+    Other(String),
+}
+
+/// Token usage statistics for a single request.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Usage {
+    /// Number of tokens in the prompt.
+    pub prompt_tokens: u32,
+    /// Number of tokens in the generated completion.
+    pub completion_tokens: u32,
+    /// Total tokens (prompt + completion).
+    pub total_tokens: u32,
+    /// Tokens spent on internal reasoning (reasoning models only).
+    pub reasoning_tokens: Option<u32>,
+    /// Prompt tokens served from the provider's cache.
+    pub cached_prompt_tokens: Option<u32>,
+}
+
+// ---------------------------------------------------------------------------
+// Streaming
+// ---------------------------------------------------------------------------
+
+/// A single event in a streamed chat completion.
+///
+/// Providers emit a sequence of `StreamEvent`s that, when consumed in order,
+/// reconstruct the full response. Content and tool-call deltas are additive —
+/// concatenate them to build the final output.
+#[derive(Debug, Clone)]
+pub enum StreamEvent {
+    /// A fragment of the model's text output.
+    ContentDelta(String),
+    /// A fragment of the model's internal reasoning (vendor-specific).
+    ReasoningDelta(String),
+    /// A fragment of a tool call. Tool call arguments arrive as string
+    /// fragments keyed by `index`; only the first chunk for a given index
+    /// carries `id` and `name`.
+    ToolCallDelta {
+        /// The index of this tool call in the response's tool_calls array.
+        index: u32,
+        /// The tool call ID (present only in the first chunk for this index).
+        id: Option<String>,
+        /// The function name (present only in the first chunk for this index).
+        name: Option<String>,
+        /// A fragment of the function arguments JSON string.
+        arguments_delta: Option<String>,
+    },
+    /// The stream has finished. Carries the stop reason and optional usage.
+    Finished {
+        finish_reason: FinishReason,
+        usage: Option<Usage>,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+impl Message {
+    /// Create a system message with plain text content.
+    pub fn system(text: impl Into<String>) -> Self {
+        Self {
+            role: Role::System,
+            content: vec![ContentPart::Text(text.into())],
+            tool_call_id: None,
+            tool_calls: None,
+            name: None,
+        }
+    }
+
+    /// Create a developer message with plain text content.
+    ///
+    /// Developer messages are an OpenAI-specific refinement of system
+    /// messages — some providers treat them identically.
+    pub fn developer(text: impl Into<String>) -> Self {
+        Self {
+            role: Role::Developer,
+            content: vec![ContentPart::Text(text.into())],
+            tool_call_id: None,
+            tool_calls: None,
+            name: None,
+        }
+    }
+
+    /// Create a user message with plain text content.
+    pub fn user(text: impl Into<String>) -> Self {
+        Self {
+            role: Role::User,
+            content: vec![ContentPart::Text(text.into())],
+            tool_call_id: None,
+            tool_calls: None,
+            name: None,
+        }
+    }
+
+    /// Create an assistant message with plain text content.
+    pub fn assistant(text: impl Into<String>) -> Self {
+        Self {
+            role: Role::Assistant,
+            content: vec![ContentPart::Text(text.into())],
+            tool_call_id: None,
+            tool_calls: None,
+            name: None,
+        }
+    }
+
+    /// Create a tool response message.
+    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: Role::Tool,
+            content: vec![ContentPart::Text(content.into())],
+            tool_call_id: Some(tool_call_id.into()),
+            tool_calls: None,
+            name: None,
+        }
+    }
+
+    /// Get the text content of this message by concatenating all text parts.
+    ///
+    /// Returns `None` if the message has no text parts.
+    pub fn text(&self) -> Option<String> {
+        let texts: Vec<&str> = self
+            .content
+            .iter()
+            .filter_map(|p| match p {
+                ContentPart::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        if texts.is_empty() {
+            None
+        } else {
+            Some(texts.join(""))
+        }
+    }
+}
+
+impl FinishReason {
+    /// Parse a wire-format finish reason string into the typed enum.
+    ///
+    /// Unknown strings are wrapped in `FinishReason::Other` rather than
+    /// causing an error, since providers may add proprietary stop reasons.
+    pub fn from_wire(s: &str) -> Self {
+        match s {
+            "stop" => Self::Stop,
+            "length" => Self::Length,
+            "tool_calls" => Self::ToolCalls,
+            "content_filter" => Self::ContentFilter,
+            other => Self::Other(other.to_owned()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn message_constructors() {
+        let sys = Message::system("be helpful");
+        assert_eq!(sys.role, Role::System);
+        assert_eq!(sys.text().as_deref(), Some("be helpful"));
+
+        let usr = Message::user("hello");
+        assert_eq!(usr.role, Role::User);
+
+        let ast = Message::assistant("hi there");
+        assert_eq!(ast.role, Role::Assistant);
+
+        let tool = Message::tool("call_123", "{\"result\": 42}");
+        assert_eq!(tool.role, Role::Tool);
+        assert_eq!(tool.tool_call_id.as_deref(), Some("call_123"));
+    }
+
+    #[test]
+    fn finish_reason_from_wire() {
+        assert_eq!(FinishReason::from_wire("stop"), FinishReason::Stop);
+        assert_eq!(FinishReason::from_wire("length"), FinishReason::Length);
+        assert_eq!(
+            FinishReason::from_wire("tool_calls"),
+            FinishReason::ToolCalls
+        );
+        assert_eq!(
+            FinishReason::from_wire("content_filter"),
+            FinishReason::ContentFilter
+        );
+        assert_eq!(
+            FinishReason::from_wire("something_else"),
+            FinishReason::Other("something_else".to_owned())
+        );
+    }
+
+    #[test]
+    fn message_text_concatenation() {
+        let msg = Message {
+            role: Role::User,
+            content: vec![
+                ContentPart::Text("hello ".to_owned()),
+                ContentPart::Text("world".to_owned()),
+            ],
+            tool_call_id: None,
+            tool_calls: None,
+            name: None,
+        };
+        assert_eq!(msg.text().as_deref(), Some("hello world"));
+    }
+
+    #[test]
+    fn message_text_no_parts() {
+        let msg = Message {
+            role: Role::User,
+            content: vec![],
+            tool_call_id: None,
+            tool_calls: None,
+            name: None,
+        };
+        assert!(msg.text().is_none());
+    }
+}
