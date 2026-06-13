@@ -251,6 +251,7 @@ where
                 }
                 // Ignore comments (lines starting with :) and other fields
                 // (event:, id:, retry:).
+                // Also skip empty data: lines — some providers send them.
             }
 
             if data.is_empty() {
