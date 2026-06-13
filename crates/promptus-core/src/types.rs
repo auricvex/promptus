@@ -185,7 +185,7 @@ pub struct ToolCall {
 /// Constrains the effort a reasoning model spends on internal reasoning.
 ///
 /// Not all providers or models support every level — consult the target
-/// provider's documentation.
+/// provider's documentation. Some providers may ignore this field entirely.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReasoningEffort {
     /// No reasoning (supported only by some newer models).
