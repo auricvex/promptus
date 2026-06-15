@@ -134,6 +134,10 @@ pub struct AgentOutcome {
 /// 4. If the model responds with text (no tool calls), treat that as the
 ///    final answer.
 /// 5. If `max_iterations` is hit, return [`CatenaError::MaxIterationsReached`].
+///
+/// The agent uses streaming internally for better latency — content and
+/// reasoning deltas are emitted as they arrive, not buffered until the
+/// response is complete.
 pub struct ReActAgent<P: ChatProvider> {
     provider: Arc<P>,
     model: String,
