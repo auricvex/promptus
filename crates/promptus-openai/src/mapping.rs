@@ -2,8 +2,8 @@
 
 use promptus_core::{
     ChatRequest, ChatResponse, ContentPart, FileSource, FinishReason, ImageSource, Message,
-    ReasoningEffort, ResponseFormat, Role, StreamEvent, ToolCall, ToolChoice, ToolDefinition,
-    ToolSpec, Usage,
+    ModelInfo, ReasoningEffort, ResponseFormat, Role, StreamEvent, ToolCall, ToolChoice,
+    ToolDefinition, ToolSpec, Usage,
 };
 
 use crate::wire::request::{
@@ -314,6 +314,22 @@ fn usage_from_wire(usage: &CompletionUsage) -> Usage {
             .as_ref()
             .and_then(|d| d.cached_tokens),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Wire -> Core (model listing mapping)
+// ---------------------------------------------------------------------------
+
+/// Convert a wire-format model list response into `Vec<ModelInfo>`.
+pub(crate) fn models_from_wire(resp: &crate::wire::response::ListModelsResponse) -> Vec<ModelInfo> {
+    resp.data
+        .iter()
+        .map(|m| ModelInfo {
+            id: m.id.clone(),
+            owned_by: m.owned_by.clone(),
+            created: m.created,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -658,6 +674,28 @@ mod tests {
         let (reason, usage) = finished.unwrap();
         assert_eq!(reason, FinishReason::Stop);
         assert_eq!(usage.unwrap().total_tokens, 7);
+    }
+
+    #[test]
+    fn map_list_models_response() {
+        let json = r#"{
+            "object": "list",
+            "data": [
+                {"id": "gpt-4o", "object": "model", "created": 1700000000, "owned_by": "openai"},
+                {"id": "local-model", "object": "model"}
+            ]
+        }"#;
+
+        let wire: crate::wire::response::ListModelsResponse = serde_json::from_str(json).unwrap();
+        let models = models_from_wire(&wire);
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "gpt-4o");
+        assert_eq!(models[0].owned_by.as_deref(), Some("openai"));
+        assert_eq!(models[0].created, Some(1_700_000_000));
+        assert_eq!(models[1].id, "local-model");
+        assert!(models[1].owned_by.is_none());
+        assert!(models[1].created.is_none());
     }
 
     #[test]

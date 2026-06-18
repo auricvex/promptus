@@ -373,6 +373,25 @@ pub enum StreamEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Model listing
+// ---------------------------------------------------------------------------
+
+/// Metadata for a single model available from a provider.
+///
+/// Returned by [`ModelProvider::list_models`](crate::ModelProvider::list_models).
+/// Fields map to the OpenAI `/models` response — other providers may omit
+/// some fields.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelInfo {
+    /// The model identifier (e.g. `"gpt-4o"`, `"llama-3.3-70b-versatile"`).
+    pub id: String,
+    /// The entity that owns or provides this model, if reported.
+    pub owned_by: Option<String>,
+    /// Unix timestamp (seconds) when the model was created, if reported.
+    pub created: Option<u64>,
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -535,5 +554,41 @@ mod tests {
             name: None,
         };
         assert!(msg.text().is_none());
+    }
+
+    #[test]
+    fn model_info_construction() {
+        let info = ModelInfo {
+            id: "gpt-4o".to_owned(),
+            owned_by: Some("openai".to_owned()),
+            created: Some(1_700_000_000),
+        };
+        assert_eq!(info.id, "gpt-4o");
+        assert_eq!(info.owned_by.as_deref(), Some("openai"));
+        assert_eq!(info.created, Some(1_700_000_000));
+    }
+
+    #[test]
+    fn model_info_optional_fields() {
+        let info = ModelInfo {
+            id: "local-model".to_owned(),
+            owned_by: None,
+            created: None,
+        };
+        assert_eq!(info.id, "local-model");
+        assert!(info.owned_by.is_none());
+        assert!(info.created.is_none());
+    }
+
+    #[test]
+    fn model_info_serde_roundtrip() {
+        let info = ModelInfo {
+            id: "gpt-4o".to_owned(),
+            owned_by: Some("openai".to_owned()),
+            created: Some(1_700_000_000),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: ModelInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(info, parsed);
     }
 }

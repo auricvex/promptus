@@ -5,7 +5,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::error::ProviderError;
-use crate::types::{ChatRequest, ChatResponse, StreamEvent};
+use crate::types::{ChatRequest, ChatResponse, ModelInfo, StreamEvent};
 
 // ---------------------------------------------------------------------------
 // ChatProvider — ergonomic trait for implementors
@@ -58,6 +58,58 @@ pub trait ChatProvider: Send + Sync {
             ProviderError,
         >,
     > + Send;
+}
+
+// ---------------------------------------------------------------------------
+// ModelProvider — trait for providers that can list available models
+// ---------------------------------------------------------------------------
+
+/// A provider that can enumerate its available models.
+///
+/// Not all providers support model listing — this trait is separate from
+/// [`ChatProvider`] so implementors only commit to capabilities they actually
+/// have. Providers that support both (e.g. OpenAI, Groq) implement both
+/// traits.
+///
+/// # Example
+///
+/// ```ignore
+/// impl ModelProvider for MyProvider {
+///     async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
+///         // Call GET /models, parse, return Vec<ModelInfo>
+///     }
+/// }
+/// ```
+pub trait ModelProvider: Send + Sync {
+    /// List the models available from this provider.
+    ///
+    /// Returns a list of [`ModelInfo`] descriptors. The set of fields
+    /// populated on each descriptor depends on the provider — `id` is always
+    /// present; `owned_by` and `created` are optional.
+    fn list_models(&self) -> impl Future<Output = Result<Vec<ModelInfo>, ProviderError>> + Send;
+}
+
+// ---------------------------------------------------------------------------
+// DynModelProvider — object-safe trait for type-erased dispatch
+// ---------------------------------------------------------------------------
+
+/// Object-safe version of [`ModelProvider`] that uses boxed futures.
+///
+/// This trait exists solely to enable `Box<dyn DynModelProvider>` in
+/// registries. A blanket impl automatically implements it for any
+/// `T: ModelProvider + 'static`, so provider authors never write this by
+/// hand.
+pub trait DynModelProvider: Send + Sync {
+    /// List the models available from this provider.
+    fn list_models(&self) -> BoxFut<'_, Result<Vec<ModelInfo>, ProviderError>>;
+}
+
+/// Blanket impl: anything implementing [`ModelProvider`] automatically
+/// implements [`DynModelProvider`].
+impl<T: ModelProvider + 'static> DynModelProvider for T {
+    fn list_models(&self) -> BoxFut<'_, Result<Vec<ModelInfo>, ProviderError>> {
+        Box::pin(ModelProvider::list_models(self))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -336,5 +388,27 @@ mod tests {
         assert!(reg.get("test").is_some());
         assert!(reg.get("missing").is_none());
         assert_eq!(reg.names(), vec!["test"]);
+    }
+
+    #[test]
+    fn model_provider_dyn_dispatch() {
+        use crate::types::ModelInfo;
+
+        struct DummyModelProvider;
+        impl ModelProvider for DummyModelProvider {
+            async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
+                Ok(vec![ModelInfo {
+                    id: "test-model".to_owned(),
+                    owned_by: Some("test".to_owned()),
+                    created: None,
+                }])
+            }
+        }
+
+        // Verify blanket impl works: ModelProvider → DynModelProvider
+        let dyn_ref: &dyn DynModelProvider = &DummyModelProvider;
+        // We can't call async in a sync test, but we can verify the trait
+        // object compiles and the type is correct.
+        let _ = dyn_ref;
     }
 }

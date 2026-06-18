@@ -7,7 +7,9 @@
 //! `reasoning_content`.
 
 use futures::stream::{self, BoxStream, StreamExt};
-use promptus_core::{ChatProvider, ChatRequest, ChatResponse, ProviderError, StreamEvent};
+use promptus_core::{
+    ChatProvider, ChatRequest, ChatResponse, ModelInfo, ModelProvider, ProviderError, StreamEvent,
+};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 
 use crate::mapping;
@@ -92,6 +94,10 @@ impl OpenAiCompatibleProvider {
 
     fn chat_url(&self) -> String {
         format!("{}/chat/completions", self.base_url)
+    }
+
+    fn models_url(&self) -> String {
+        format!("{}/models", self.base_url)
     }
 
     /// Build the common set of HTTP headers for every request.
@@ -187,6 +193,27 @@ impl OpenAiCompatibleProvider {
 
         Ok(event_stream.boxed())
     }
+
+    /// Fetch the list of available models from `GET /models`.
+    async fn do_list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
+        let url = self.models_url();
+
+        let resp = self
+            .http_client
+            .get(&url)
+            .headers(self.build_headers())
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        if !resp.status().is_success() {
+            return Err(parse_error_response(resp).await);
+        }
+
+        let body: response::ListModelsResponse = resp.json().await.map_err(map_reqwest_error)?;
+
+        Ok(mapping::models_from_wire(&body))
+    }
 }
 
 impl ChatProvider for OpenAiCompatibleProvider {
@@ -199,6 +226,12 @@ impl ChatProvider for OpenAiCompatibleProvider {
         request: ChatRequest,
     ) -> Result<BoxStream<'static, Result<StreamEvent, ProviderError>>, ProviderError> {
         self.do_chat_stream(request).await
+    }
+}
+
+impl ModelProvider for OpenAiCompatibleProvider {
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
+        self.do_list_models().await
     }
 }
 
@@ -373,6 +406,7 @@ mod tests {
         let p = OpenAiCompatibleProvider::new("https://api.example.com/v1", "sk-test");
         assert_eq!(p.base_url, "https://api.example.com/v1");
         assert_eq!(p.chat_url(), "https://api.example.com/v1/chat/completions");
+        assert_eq!(p.models_url(), "https://api.example.com/v1/models");
     }
 
     #[test]

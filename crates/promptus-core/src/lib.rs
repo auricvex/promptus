@@ -19,9 +19,12 @@ mod traits;
 mod types;
 
 pub use error::ProviderError;
-pub use traits::{BoxFut, ChatProvider, DynChatProvider, ProviderRegistry, ToolCallAccumulator};
+pub use traits::{
+    BoxFut, ChatProvider, DynChatProvider, DynModelProvider, ModelProvider, ProviderRegistry,
+    ToolCallAccumulator,
+};
 pub use types::{
     ChatRequest, ChatResponse, ContentPart, FileSource, FinishReason, ImageSource, Message,
-    ReasoningEffort, ResponseFormat, Role, StreamEvent, ToolCall, ToolChoice, ToolDefinition,
-    ToolSpec, Usage,
+    ModelInfo, ReasoningEffort, ResponseFormat, Role, StreamEvent, ToolCall, ToolChoice,
+    ToolDefinition, ToolSpec, Usage,
 };

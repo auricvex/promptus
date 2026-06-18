@@ -178,6 +178,32 @@ pub(crate) struct CompletionTokensDetails {
 }
 
 // ---------------------------------------------------------------------------
+// Model listing response
+// ---------------------------------------------------------------------------
+
+/// Response from `GET /models`.
+///
+/// The OpenAI spec returns `{"object": "list", "data": [...]}`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ListModelsResponse {
+    #[serde(default)]
+    pub data: Vec<WireModel>,
+}
+
+/// A single model entry in the `/models` response.
+#[derive(Debug, Deserialize)]
+pub(crate) struct WireModel {
+    /// The model identifier (e.g. `"gpt-4o"`).
+    pub id: String,
+    /// The entity that owns or provides this model.
+    #[serde(default)]
+    pub owned_by: Option<String>,
+    /// Unix timestamp (seconds) when the model was created.
+    #[serde(default)]
+    pub created: Option<u64>,
+}
+
+// ---------------------------------------------------------------------------
 // Error response
 // ---------------------------------------------------------------------------
 
@@ -433,5 +459,43 @@ mod tests {
         assert!(resp.usage.is_none());
         assert!(resp.choices[0].message.tool_calls.is_none());
         assert!(resp.choices[0].message.reasoning_content.is_none());
+    }
+
+    #[test]
+    fn parse_list_models_response() {
+        let json = r#"{
+            "object": "list",
+            "data": [
+                {"id": "gpt-4o", "object": "model", "created": 1700000000, "owned_by": "openai"},
+                {"id": "gpt-3.5-turbo", "object": "model", "created": 1690000000, "owned_by": "openai"}
+            ]
+        }"#;
+
+        let resp: ListModelsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.data.len(), 2);
+        assert_eq!(resp.data[0].id, "gpt-4o");
+        assert_eq!(resp.data[0].owned_by.as_deref(), Some("openai"));
+        assert_eq!(resp.data[0].created, Some(1_700_000_000));
+        assert_eq!(resp.data[1].id, "gpt-3.5-turbo");
+    }
+
+    #[test]
+    fn parse_list_models_minimal() {
+        // Some providers return minimal model entries.
+        let json = r#"{"data": [{"id": "local-model"}]}"#;
+
+        let resp: ListModelsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.data.len(), 1);
+        assert_eq!(resp.data[0].id, "local-model");
+        assert!(resp.data[0].owned_by.is_none());
+        assert!(resp.data[0].created.is_none());
+    }
+
+    #[test]
+    fn parse_list_models_empty() {
+        let json = r#"{"object": "list", "data": []}"#;
+
+        let resp: ListModelsResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.data.is_empty());
     }
 }
