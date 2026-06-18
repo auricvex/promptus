@@ -103,9 +103,10 @@ pub use promptus_openai::OpenAiCompatibleProvider;
 
 // Re-export all core types so consumers only need `use promptus::*`.
 pub use promptus_core::{
-    BoxFut, ChatProvider, ContentPart, DynChatProvider, FileSource, FinishReason, ImageSource,
-    Message, ProviderError, ProviderRegistry, ReasoningEffort, ResponseFormat, Role, StreamEvent,
-    ToolCall, ToolCallAccumulator, ToolChoice, ToolDefinition, ToolSpec, Usage,
+    BoxFut, ChatProvider, ContentPart, DynChatProvider, DynModelProvider, FileSource, FinishReason,
+    ImageSource, Message, ModelInfo, ModelProvider, ProviderError, ProviderRegistry,
+    ReasoningEffort, ResponseFormat, Role, StreamEvent, ToolCall, ToolCallAccumulator, ToolChoice,
+    ToolDefinition, ToolSpec, Usage,
 };
 
 // Re-export the core crate itself for consumers who need to reference it

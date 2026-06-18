@@ -1,6 +1,10 @@
 //! The Promptus client and its builder.
 
-use promptus_core::{DynChatProvider, ProviderRegistry};
+use std::collections::HashMap;
+
+use promptus_core::{
+    DynChatProvider, DynModelProvider, ModelInfo, ProviderError, ProviderRegistry,
+};
 
 use crate::builder::ChatRequestBuilder;
 
@@ -36,6 +40,7 @@ use crate::builder::ChatRequestBuilder;
 /// ```
 pub struct PromptusClient {
     registry: ProviderRegistry,
+    model_providers: HashMap<String, Box<dyn DynModelProvider>>,
 }
 
 impl PromptusClient {
@@ -68,6 +73,18 @@ impl PromptusClient {
     pub fn provider_names(&self) -> Vec<&str> {
         self.registry.names()
     }
+
+    /// List the models available from the named provider.
+    ///
+    /// Returns `ProviderError::InvalidRequest` if no model provider is
+    /// registered under the given name. Use
+    /// [`PromptusClientBuilder::model_provider`] to register one.
+    pub async fn list_models(&self, provider: &str) -> Result<Vec<ModelInfo>, ProviderError> {
+        let model_provider = self.model_providers.get(provider).ok_or_else(|| {
+            ProviderError::InvalidRequest(format!("no model provider registered as '{provider}'"))
+        })?;
+        model_provider.list_models().await
+    }
 }
 
 /// Builder for constructing a [`PromptusClient`].
@@ -76,12 +93,14 @@ impl PromptusClient {
 /// [`build`](Self::build) to create the client.
 pub struct PromptusClientBuilder {
     registry: ProviderRegistry,
+    model_providers: HashMap<String, Box<dyn DynModelProvider>>,
 }
 
 impl PromptusClientBuilder {
     fn new() -> Self {
         Self {
             registry: ProviderRegistry::new(),
+            model_providers: HashMap::new(),
         }
     }
 
@@ -99,10 +118,40 @@ impl PromptusClientBuilder {
         self
     }
 
+    /// Register a model-listing provider under the given name.
+    ///
+    /// This enables [`PromptusClient::list_models`] for the given provider
+    /// name. A provider that implements both [`DynChatProvider`] and
+    /// [`DynModelProvider`] (like [`OpenAiCompatibleProvider`](crate::OpenAiCompatibleProvider))
+    /// must be registered separately for each capability.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use promptus::{PromptusClient, OpenAiCompatibleProvider};
+    ///
+    /// let provider = OpenAiCompatibleProvider::new(url, key);
+    /// let client = PromptusClient::builder()
+    ///     .provider("groq", OpenAiCompatibleProvider::new(url, key))
+    ///     .model_provider("groq", OpenAiCompatibleProvider::new(url, model_key))
+    ///     .build();
+    ///
+    /// let models = client.list_models("groq").await?;
+    /// ```
+    pub fn model_provider(
+        mut self,
+        name: impl Into<String>,
+        provider: impl DynModelProvider + 'static,
+    ) -> Self {
+        self.model_providers.insert(name.into(), Box::new(provider));
+        self
+    }
+
     /// Build the `PromptusClient`.
     pub fn build(self) -> PromptusClient {
         PromptusClient {
             registry: self.registry,
+            model_providers: self.model_providers,
         }
     }
 }
