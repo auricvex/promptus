@@ -1,7 +1,4 @@
 //! Error types for the Catena orchestration layer.
-//!
-//! [`CatenaError`] unifies all failure modes across Catena runnables,
-//! agents, and tools into a single enum.
 
 /// All errors produced by Catena runnables, agents, and tools.
 #[derive(Debug, thiserror::Error)]

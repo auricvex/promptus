@@ -12,9 +12,6 @@
 //!
 //! The trait uses [`BoxFut`](promptus_core::BoxFut) return types (rather
 //! than RPITIT) so it is object-safe and can be used as `Arc<dyn Memory>`.
-//!
-//! Future implementations could backed by external storage (Redis, SQLite,
-//! etc.) for persistent sessions.
 
 use std::sync::Arc;
 

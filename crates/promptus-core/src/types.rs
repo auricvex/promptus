@@ -185,7 +185,7 @@ pub struct ToolCall {
 /// Constrains the effort a reasoning model spends on internal reasoning.
 ///
 /// Not all providers or models support every level — consult the target
-/// provider's documentation. Some providers may ignore this field entirely.
+/// provider's documentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReasoningEffort {
     /// No reasoning (supported only by some newer models).
@@ -286,7 +286,7 @@ pub struct ChatRequest {
 /// A provider-agnostic chat completion response.
 ///
 /// Returned by [`ChatProvider::chat`](crate::ChatProvider::chat). Contains
-/// the model's text output (if any), any tool calls it requested, and
+/// the model's output text (if any), any tool calls it requested, and
 /// optional usage/token accounting.
 #[derive(Debug, Clone)]
 pub struct ChatResponse {

@@ -119,8 +119,6 @@ fn print_event(event: &AgentEvent) {
             if !answer.is_empty() {
                 println!(); // Newline after streamed content.
             }
-                println!(); // Newline after streamed content.
-            }
         }
     }
 }

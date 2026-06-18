@@ -48,8 +48,7 @@ pub trait ChatProvider: Send + Sync {
     ///
     /// Returns a stream of [`StreamEvent`]s that, when consumed in order,
     /// reconstruct the full response. The stream should yield a
-    /// `StreamEvent::Finished` as its last event. The stream may also
-    /// yield `ToolCallDelta` events for tool-calling responses.
+    /// `StreamEvent::Finished` as its last event.
     fn chat_stream(
         &self,
         request: ChatRequest,

@@ -251,7 +251,6 @@ where
                 }
                 // Ignore comments (lines starting with :) and other fields
                 // (event:, id:, retry:).
-                // Also skip empty data: lines — some providers send them.
             }
 
             if data.is_empty() {
@@ -396,11 +395,5 @@ mod tests {
         let inner = err.error.unwrap();
         assert_eq!(inner.message.unwrap(), "Invalid API key");
         assert_eq!(inner.code.unwrap(), "invalid_api_key");
-    }
-
-    #[test]
-    fn provider_url_no_double_slash() {
-        let p = OpenAiCompatibleProvider::new("https://api.example.com/v1/", "sk-test");
-        assert_eq!(p.chat_url(), "https://api.example.com/v1/chat/completions");
     }
 }

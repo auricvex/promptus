@@ -203,7 +203,3 @@ guidelines.
 
 This project is dual-licensed under the [MIT](LICENSE-MIT) and
 [Apache 2.0](LICENSE-APACHE-2.0) licenses. You may choose either one.
-
----
-
-**Built with ❤️ in Rust**
