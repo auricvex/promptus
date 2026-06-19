@@ -266,10 +266,8 @@ impl<P: ChatProvider> ReActAgentBuilder<P> {
     }
 
     /// Register multiple tools the agent can call.
-    pub fn tools<T: DynTool + 'static>(mut self, tools: Vec<T>) -> Self {
-        for tool in tools {
-            self.tools.push(Box::new(tool));
-        }
+    pub fn tools(mut self, tools: Vec<Box<dyn DynTool>>) -> Self {
+        self.tools.extend(tools);
         self
     }
 
