@@ -265,6 +265,14 @@ impl<P: ChatProvider> ReActAgentBuilder<P> {
         self
     }
 
+    /// Register multiple tools the agent can call.
+    pub fn tools<T: DynTool + 'static>(mut self, tools: Vec<T>) -> Self {
+        for tool in tools {
+            self.tools.push(Box::new(tool));
+        }
+        self
+    }
+
     /// Register a raw tool spec sent verbatim to the provider.
     ///
     /// Use this for provider-specific tool types (e.g. server-side web search)
